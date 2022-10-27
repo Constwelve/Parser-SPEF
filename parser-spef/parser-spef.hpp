@@ -33,9 +33,11 @@ namespace spef {
 // ConnectionType: 
 //   EXTERNAL: connection to a external port (*P)
 //   INTERNAL: connection to a cell instance (*I)
+//   NODE: connection to ground (*N)
 enum class ConnectionType {
   INTERNAL,
-  EXTERNAL
+  EXTERNAL,
+  NODE
 };
 
 // ConnectionDirection:
@@ -210,6 +212,7 @@ inline std::ostream& operator<<(std::ostream& os, const ConnectionType& c)
   switch(c){
     case ConnectionType::INTERNAL: os << "*I"; break;
     case ConnectionType::EXTERNAL: os << "*P"; break;
+    case ConnectionType::NODE: os << "*N"; break;
   }
   return os;
 }
@@ -918,15 +921,20 @@ struct Action<RuleConnBeg>
 };
 
 struct RuleConn: pegtl::seq<
-  pegtl::sor<TAO_PEGTL_STRING("*P"), TAO_PEGTL_STRING("*I")>, 
-  RuleSpace, RuleVar, RuleSpace, pegtl::must<pegtl::one<'I','O','B'>>, 
-  
+  pegtl::sor<TAO_PEGTL_STRING("*N"), TAO_PEGTL_STRING("*I")>, 
+  RuleSpace, 
+  RuleVar, 
+  pegtl::sor<
+    pegtl::seq<RuleSpace, pegtl::one<'I'>, RuleSpace>,
+    pegtl::seq<RuleSpace, pegtl::one<'O'>, RuleSpace>,
+    pegtl::seq<RuleSpace, pegtl::one<'B'>, RuleSpace>,
+    pegtl::seq<RuleSpace>>,
   pegtl::star<pegtl::sor<
-    pegtl::seq<RuleSpace, pegtl::seq<TAO_PEGTL_STRING("*C"), RuleSpace, double_::rule, 
-      RuleSpace, double_::rule>>,
-
+    pegtl::seq<pegtl::seq<TAO_PEGTL_STRING("*C"), RuleSpace, double_::rule, RuleSpace, double_::rule>>,
+    pegtl::seq<pegtl::seq<TAO_PEGTL_STRING("*L"), RuleSpace, double_::rule>>,
+    pegtl::seq<pegtl::seq<TAO_PEGTL_STRING("*D"), RuleSpace, RuleToken>>,
+    pegtl::seq<RuleSpace, pegtl::seq<TAO_PEGTL_STRING("*C"), RuleSpace, double_::rule, RuleSpace, double_::rule>>,
     pegtl::seq<RuleSpace, pegtl::seq<TAO_PEGTL_STRING("*L"), RuleSpace, double_::rule>>,
-
     pegtl::seq<RuleSpace, pegtl::seq<TAO_PEGTL_STRING("*D"), RuleSpace, RuleToken>>
     >
   >
@@ -939,10 +947,20 @@ struct Action<RuleConn>
   template <typename Input>
   static void apply(const Input& in, Spef& d){
     auto &c = d._current_net->connections.emplace_back();
-
+    bool hasdirection = true;
     split_on_space(in.begin(), in.end(), d._tokens);
 
-    c.type = d._tokens[0][1] == 'P' ? ConnectionType::EXTERNAL : ConnectionType::INTERNAL;
+    switch(d._tokens[0][1]){
+      case 'I':
+        c.type = ConnectionType::INTERNAL;
+        break;
+      case 'P':
+        c.type = ConnectionType::EXTERNAL;
+        break;
+      default: /* N */
+        c.type = ConnectionType::NODE;
+        break;
+    }
     c.name = d._tokens[1];
     switch(d._tokens[2][0]){
       case 'I':
@@ -951,12 +969,15 @@ struct Action<RuleConn>
       case 'O':
         c.direction = ConnectionDirection::OUTPUT;
         break;
-      default:
+      case 'B':
         c.direction = ConnectionDirection::INOUT;
+      default:
+        c.direction = ConnectionDirection::INPUT;
+        hasdirection = false;
         break;
     }
 
-    for(size_t i=3; i<d._tokens.size(); i++){
+    for(size_t i=2 + hasdirection; i<d._tokens.size(); i++){
       if(d._tokens[i].compare("*C") == 0){
         c.coordinate = std::make_pair(
           std::strtof(d._tokens[i+1].data(), nullptr), std::strtof(d._tokens[i+2].data(), nullptr)
