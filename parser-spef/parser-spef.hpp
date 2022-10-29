@@ -13,13 +13,13 @@
 #include <array>
 #include <string_view>
 #include <optional>
-#include <experimental/filesystem>
+// #include <experimental/filesystem>
 #include <fstream>
 #include <cmath>
 
 #include "pegtl/pegtl.hpp"
 
-namespace fs = std::experimental::filesystem;
+// namespace fs = std::experimental::filesystem;
 
 namespace spef {
 
@@ -131,7 +131,7 @@ struct Spef {
   void scale_capacitance(float);
   void scale_resistance(float);
   
-  bool read(const fs::path &);
+  bool read(const std::string &);
 
   template <typename T>
   friend struct Action;
@@ -1179,12 +1179,7 @@ const std::string Control<T>::error_message =
 
 
 // Procedure:: file_to_memory reads the content of a file to a string buffer
-inline std::string file_to_memory(const fs::path &p){
-
-  if(not fs::exists(p)){
-    return "";
-  }
-
+inline std::string file_to_memory(const std::string &p){
   std::ifstream ifs(p);
 
   ifs.seekg(0, std::ios::end);
@@ -1197,7 +1192,7 @@ inline std::string file_to_memory(const fs::path &p){
 }
 
 // Function: read
-inline bool Spef::read(const fs::path &p){
+inline bool Spef::read(const std::string &p){
 
   auto buffer {file_to_memory(p)};
 
